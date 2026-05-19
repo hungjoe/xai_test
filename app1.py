@@ -435,7 +435,28 @@ def render_task_video_emotion_monitor():
         st.error("⚠️ 找不到 Twilio 憑證，請檢查 Streamlit Cloud 的 Secrets 設定！")
 
     # 2. 啟動 WebRTC
-    webrtc_ctx = None
+   webrtc_ctx = webrtc_streamer(
+            key="task_emotion_webrtc",
+            # 猛藥 1：切換為 SENDONLY (單向傳輸)
+            # 瀏覽器只會上傳影像給伺服器，伺服器不回傳，這能省下 50% 以上的連線與運算負擔！
+            mode=WebRtcMode.SENDONLY, 
+            
+            rtc_configuration={
+                "iceServers": ice_servers,
+                # 猛藥 2：強制走 TURN 中繼 (繞過學校/學術網路嚴格的防火牆)
+                "iceTransportPolicy": "relay" 
+            },
+            media_stream_constraints={
+                "video": {
+                    "width": {"ideal": 640},
+                    "height": {"ideal": 480},
+                    "frameRate": {"ideal": 15}
+                },
+                "audio": False,
+            },
+            video_processor_factory=EmotionVideoProcessor,
+            async_processing=True,
+        )
     if webrtc_streamer is not None and WebRtcMode is not None and av is not None:
         webrtc_ctx = webrtc_streamer(
             key="task_emotion_webrtc",
