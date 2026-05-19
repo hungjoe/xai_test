@@ -80,7 +80,7 @@ def sync_to_apps_script(sheet_name: str, row: dict):
         "data": row,
     }
     try:
-        response = requests.post(APPS_SCRIPT_URL, json=payload, timeout=5)
+        response = requests.post(APPS_SCRIPT_URL, json=payload, timeout=15)
         if response.status_code == 200:
             return bool(response.json().get("ok"))
         return False
