@@ -425,8 +425,14 @@ def render_task_video_emotion_monitor():
             client = Client(account_sid, auth_token)
             token = client.tokens.create()
             ice_servers = token.ice_servers
+            # 加入這行來確認是否成功
+            st.success(f"✅ 成功取得 Twilio 伺服器！共 {len(ice_servers)} 組節點。") 
         except Exception as e:
-            st.warning(f"無法取得 Twilio TURN 伺服器，可能導致連線不穩: {e}")
+            # 如果 API 失敗，會顯示在這裡
+            st.error(f"❌ Twilio API 發生錯誤：{e}")
+    else:
+        # 如果根本沒讀到環境變數，會顯示這行
+        st.error("⚠️ 找不到 Twilio 憑證，請檢查 Streamlit Cloud 的 Secrets 設定！")
 
     # 2. 啟動 WebRTC
     webrtc_ctx = None
