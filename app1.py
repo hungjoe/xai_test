@@ -363,8 +363,6 @@ def render_emotion_detection_live_panel(webrtc_ctx):
             st.error(f"TensorFlow 載入失敗：{TF_IMPORT_ERROR}")
         elif webrtc_ctx is None:
             st.error("webcam 模組不可用。")
-        elif not getattr(webrtc_ctx.state, "playing", False):
-            st.info("請先允許瀏覽器使用內建相機，啟動 webcam 後才會開始記錄。")
         else:
             processor = getattr(webrtc_ctx, "video_processor", None)
             frame = getattr(processor, "latest_frame", None) if processor else None
@@ -372,6 +370,7 @@ def render_emotion_detection_live_panel(webrtc_ctx):
             # 載入輕量化模型 (已 Cache)
             model = load_lightweight_model()
 
+            # 核心修改：只要 frame 存在就直接分析，不被 playing 狀態卡死
             if frame is not None and model is not None:
                 now_ts = time.time()
                 last_ts = float(st.session_state.get("last_emotion_capture_at", 0.0) or 0.0)
@@ -390,14 +389,18 @@ def render_emotion_detection_live_panel(webrtc_ctx):
                     except Exception as e:
                         st.error(f"情緒偵測失敗：{e}")
             else:
-                st.info("正在等待 webcam 畫面或模型初始化...")
+                # 只有在真的抓不到畫面時，才顯示提示
+                if not getattr(webrtc_ctx.state, "playing", False):
+                    st.info("正在請求相機權限與建立安全連線，請稍候 (約需 3-5 秒)...")
+                else:
+                    st.info("正在等待 webcam 畫面或模型初始化...")
 
     st.markdown("#### 即時情緒紀錄表 (Session 暫存)")
     st.dataframe(get_recent_emotion_records(20), use_container_width=True)
-
+    
 def render_task_video_emotion_monitor():
     st.markdown("### 任務操作情緒記錄")
-    st.caption("請開啟 webcam 進行拍攝與偵測；按開始偵測後進入任務區。")
+    st.caption("請點擊下方「開始偵測」，系統將自動開啟相機並記錄您的情緒。")
 
     btn1, btn2 = st.columns(2)
     with btn1:
@@ -414,8 +417,8 @@ def render_task_video_emotion_monitor():
 
     st.markdown("#### webcam 拍攝框")
     
-    # 1. 取得 Twilio 動態 ICE Servers 的邏輯
-    ice_servers = [{"urls": ["stun:stun.l.google.com:19302"]}] # 預設保留 Google STUN 墊底
+    # 1. 取得 Twilio 動態 ICE Servers
+    ice_servers = [{"urls": ["stun:stun.l.google.com:19302"]}]
     
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
     auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
@@ -425,28 +428,22 @@ def render_task_video_emotion_monitor():
             client = Client(account_sid, auth_token)
             token = client.tokens.create()
             ice_servers = token.ice_servers
-            # 加入這行來確認是否成功
-            st.success(f"✅ 成功取得 Twilio 伺服器！共 {len(ice_servers)} 組節點。") 
         except Exception as e:
-            # 如果 API 失敗，會顯示在這裡
-            st.error(f"❌ Twilio API 發生錯誤：{e}")
-    else:
-        # 如果根本沒讀到環境變數，會顯示這行
-        st.error("⚠️ 找不到 Twilio 憑證，請檢查 Streamlit Cloud 的 Secrets 設定！")
+            st.warning(f"無法取得 Twilio TURN 伺服器，可能導致連線不穩: {e}")
+
+    # 讀取目前的偵測狀態
+    is_detecting = st.session_state.get("emotion_detecting", False)
 
     # 2. 啟動 WebRTC
     webrtc_ctx = None
     if webrtc_streamer is not None and WebRtcMode is not None and av is not None:
         webrtc_ctx = webrtc_streamer(
             key="task_emotion_webrtc",
-            # 猛藥 1：切換為 SENDONLY (單向傳輸)
-            # 瀏覽器只會上傳影像給伺服器，伺服器不回傳，這能省下 50% 以上的連線與運算負擔！
-            mode=WebRtcMode.SENDONLY, 
-            
+            mode=WebRtcMode.SENDONLY,
+            desired_playing_state=is_detecting, # <--- 神奇的一行：讓 Streamlit 按鈕直接控制相機開關
             rtc_configuration={
                 "iceServers": ice_servers,
-                # 猛藥 2：強制走 TURN 中繼 (繞過學校/學術網路嚴格的防火牆)
-                "iceTransportPolicy": "relay" 
+                "iceTransportPolicy": "relay"
             },
             media_stream_constraints={
                 "video": {
@@ -460,7 +457,6 @@ def render_task_video_emotion_monitor():
             async_processing=True,
         )
 
-    # 移除影片上傳分析功能，因為不適合在無狀態的 Streamlit Cloud 上進行長時間的影片轉檔運算
     st.info("雲端版本為節省資源，已關閉本機影片上傳分析，請使用即時 Webcam 進行輕量化偵測。")
 
     render_emotion_detection_live_panel(webrtc_ctx)
