@@ -8,6 +8,7 @@ import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from twilio.rest import Client
 
 import pandas as pd
 import streamlit as st
@@ -412,15 +413,29 @@ def render_task_video_emotion_monitor():
             st.rerun()
 
     st.markdown("#### webcam 拍攝框")
+    
+    # 1. 取得 Twilio 動態 ICE Servers 的邏輯
+    ice_servers = [{"urls": ["stun:stun.l.google.com:19302"]}] # 預設保留 Google STUN 墊底
+    
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    
+    if account_sid and auth_token:
+        try:
+            client = Client(account_sid, auth_token)
+            token = client.tokens.create()
+            ice_servers = token.ice_servers
+        except Exception as e:
+            st.warning(f"無法取得 Twilio TURN 伺服器，可能導致連線不穩: {e}")
+
+    # 2. 啟動 WebRTC
     webrtc_ctx = None
     if webrtc_streamer is not None and WebRtcMode is not None and av is not None:
         webrtc_ctx = webrtc_streamer(
             key="task_emotion_webrtc",
             mode=WebRtcMode.SENDRECV,
             rtc_configuration={
-                "iceServers": [
-                    {"urls": ["stun:stun.l.google.com:19302"]}
-                ]
+                "iceServers": ice_servers  # <--- 將取得的伺服器名單餵給這裡
             },
             media_stream_constraints={
                 "video": True,
