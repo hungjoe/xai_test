@@ -134,28 +134,35 @@ def load_lightweight_model():
 
 def analyze_frame_emotion_lightweight(frame, model):
     if cv2 is None or model is None:
-        raise RuntimeError("環境未備妥，無法進行情緒偵測。")
+        raise RuntimeError("環境未備妥 (OpenCV 或 模型遺失)。")
+        
+    # [新增防護網 1] 確保 frame 真的是一張圖片 (有維度)
+    if frame is None or not hasattr(frame, "shape"):
+        raise ValueError("收到的影像格式不正確，無法分析。")
 
-    # 1. 影像預處理 (符合 MobileNetV2 格式)
-    img = cv2.resize(frame, (224, 224))
-    x = img_to_array(img)
-    x = np.expand_dims(x, axis=0)
-    x = preprocess_input(x)
+    try:
+        # 1. 影像預處理
+        img = cv2.resize(frame, (224, 224))
+        x = img_to_array(img)
+        x = np.expand_dims(x, axis=0)
+        x = preprocess_input(x)
 
-    # 2. 執行推論 (特徵提取)
-    features = model.predict(x, verbose=0)
-    
-    # ----------------------------------------------------
-    # 3. 分類器邏輯 (請將此處替換為您的實際分類器)
-    # 由於教學用，此處示範隨機模擬輕量模型輸出的情緒分佈
-    emotions = ["happy", "neutral", "surprise", "sad", "angry", "fear", "disgust"]
-    probs = [0.1, 0.5, 0.1, 0.1, 0.1, 0.05, 0.05] 
-    raw_emotion = np.random.choice(emotions, p=probs)
-    confidence = round(float(np.random.uniform(0.75, 0.98)), 2)
-    # ----------------------------------------------------
+        # 2. 執行推論 (特徵提取)
+        # [新增防護網 2] 如果是這裡失敗，通常是雲端記憶體不足
+        features = model.predict(x, verbose=0)
+        
+        # 3. 分類器邏輯 (模擬)
+        emotions = ["happy", "neutral", "surprise", "sad", "angry", "fear", "disgust"]
+        probs = [0.1, 0.5, 0.1, 0.1, 0.1, 0.05, 0.05] 
+        raw_emotion = np.random.choice(emotions, p=probs)
+        confidence = round(float(np.random.uniform(0.75, 0.98)), 2)
 
-    stable_emotion = build_stable_emotion(raw_emotion)
-    return append_task_emotion_row(raw_emotion, stable_emotion, confidence)
+        stable_emotion = build_stable_emotion(raw_emotion)
+        return append_task_emotion_row(raw_emotion, stable_emotion, confidence)
+        
+    except Exception as e:
+        # 這樣如果影像處理失敗，我們就能在畫面上看到精準的死因
+        raise RuntimeError(f"模型分析過程發生錯誤: {e}")
 
 
 # ==========================================
